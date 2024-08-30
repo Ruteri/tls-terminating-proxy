@@ -11,14 +11,25 @@ Put the certificate API behind something like https://github.com/flashbots/cvm-r
 **Generate certificate and key files**
 
 ```
-openssl req -new -subj "/CN=localhost/" -newkey rsa:2048 -nodes -keyout key.pem -out localhost.csr
-openssl x509 -req -days 365 -in localhost.csr -signkey key.pem -out cert.pem
+openssl genrsa -out ca.key 2048
+openssl req -new -x509 -days 365 -key ca.key -subj "/C=CN/ST=GD/L=SZ/O=Acme, Inc./CN=Acme Root CA" -out ca.crt
+
+openssl req -newkey rsa:2048 -nodes -keyout server.key -subj "/C=CN/ST=GD/L=SZ/O=Acme, Inc./CN=*.example.com" -out server.csr
+openssl x509 -req -extfile <(printf "subjectAltName=DNS:example.com,DNS:www.example.com") -days 365 -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt
+
 ```
 
 **Run the proxy**
 
 ```
 go run ./cmd/proxy-server/main.go 
+```
+
+**Run the client (verification)**
+
+Assumes `example.com` is your domain (put `127.0.0.1 example.com` in `/etc/hosts`).  
+```
+go run ./cmd/proxy-client/main.go --proxy-url https://example.com:8081
 ```
 
 **Install dev dependencies**

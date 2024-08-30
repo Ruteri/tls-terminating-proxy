@@ -36,12 +36,17 @@ var flags []cli.Flag = []cli.Flag{
 	},
 	&cli.StringFlag{
 		Name:  "certificate-file",
-		Value: "cert.pem",
+		Value: "server.crt",
+		Usage: "Certificate to present (PEM)",
+	},
+	&cli.StringFlag{
+		Name:  "ca-certificate-file",
+		Value: "ca.crt",
 		Usage: "Certificate to present (PEM)",
 	},
 	&cli.StringFlag{
 		Name:  "private-key-file",
-		Value: "key.pem",
+		Value: "server.key",
 		Usage: "Private key for the certificate (PEM)",
 	},
 	&cli.BoolFlag{
@@ -83,6 +88,7 @@ func main() {
 			listenAddr := cCtx.String("proxy-listen-addr")
 			targetAddr := cCtx.String("proxy-target-addr")
 			certFile := cCtx.String("certificate-file")
+			caCertFile := cCtx.String("ca-certificate-file")
 			keyFile := cCtx.String("private-key-file")
 			logJSON := cCtx.Bool("log-json")
 			logDebug := cCtx.Bool("log-debug")
@@ -102,7 +108,7 @@ func main() {
 				log = log.With("uid", id.String())
 			}
 
-			certData, err := os.ReadFile(certFile)
+			caCertData, err := os.ReadFile(caCertFile)
 			if err != nil {
 				log.Error("could not read cert data", "err", err)
 				return err
@@ -110,7 +116,7 @@ func main() {
 
 			apiSrv := &http.Server{
 				Addr:              apiListenAddr,
-				Handler:           &DummyHandler{log: log, certData: certData},
+				Handler:           &DummyHandler{log: log, certData: caCertData},
 				ReadHeaderTimeout: 200 * time.Millisecond,
 			}
 
