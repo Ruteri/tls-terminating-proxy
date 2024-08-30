@@ -1,7 +1,7 @@
-# go-template
+# tls-terminating-proxy
 
-[![Goreport status](https://goreportcard.com/badge/github.com/flashbots/go-template)](https://goreportcard.com/report/github.com/flashbots/go-template)
-[![Test status](https://github.com/flashbots/go-template/workflows/Checks/badge.svg?branch=main)](https://github.com/flashbots/go-template/actions?query=workflow%3A%22Checks%22)
+[![Goreport status](https://goreportcard.com/badge/github.com/ruteri/tls-terminating-proxy)](https://goreportcard.com/report/github.com/ruteri/tls-terminating-proxy)
+[![Test status](https://github.com/ruteri/tls-terminating-proxy/workflows/Checks/badge.svg?branch=main)](https://github.com/ruteri/tls-terminating-proxy/actions?query=workflow%3A%22Checks%22)
 
 Proxy that terminates tls and serves its tls certificate!  
 Put the certificate API behind something like https://github.com/flashbots/cvm-reverse-proxy.  

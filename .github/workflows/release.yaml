@@ -42,7 +42,6 @@ jobs:
 #          id: meta
 #          uses: docker/metadata-action@v5
 #          with:
-#            images: flashbots/go-template
 #            tags: |
 #              type=sha
 #              type=pep440,pattern={{version}}
