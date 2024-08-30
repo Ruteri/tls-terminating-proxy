@@ -73,11 +73,13 @@ func main() {
 				log = log.With("uid", id.String())
 			}
 
+			//nolint:gosec
 			resp, err := http.Get(apiAddr)
 			if err != nil {
 				log.Error("could not request cert data", "err", err)
 				return err
 			}
+			defer resp.Body.Close()
 
 			certData, err := io.ReadAll(resp.Body)
 			if err != nil {
@@ -105,6 +107,7 @@ func main() {
 			/* HTTP-OVER-TLS example */
 
 			client := &http.Client{
+				//nolint:gosec
 				Transport: &http.Transport{
 					TLSClientConfig: &tls.Config{
 						RootCAs: roots,
@@ -117,6 +120,7 @@ func main() {
 				log.Error("could not get proxied service", "err", err)
 				return err
 			}
+			defer proxyResp.Body.Close()
 
 			respBody, err := io.ReadAll(proxyResp.Body)
 			if err != nil {
