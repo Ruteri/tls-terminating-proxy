@@ -2,7 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"io"
 	"log"
 	"log/slog"
 	"net/http"
@@ -33,6 +38,11 @@ var flags []cli.Flag = []cli.Flag{
 		Name:  "proxy-target-addr",
 		Value: "http://127.0.0.1:8082",
 		Usage: "address proxy should forward to",
+	},
+	&cli.StringFlag{
+		Name:  "dummy-dcap-addr",
+		Value: "http://127.0.0.1:8091",
+		Usage: "address to request quote on",
 	},
 	&cli.StringFlag{
 		Name:  "certificate-file",
@@ -85,6 +95,7 @@ func main() {
 		Flags: flags,
 		Action: func(cCtx *cli.Context) error {
 			apiListenAddr := cCtx.String("cert-service-listen-addr")
+			dummyDcapAddr := cCtx.String("dummy-dcap-addr")
 			listenAddr := cCtx.String("proxy-listen-addr")
 			targetAddr := cCtx.String("proxy-target-addr")
 			certFile := cCtx.String("certificate-file")
@@ -114,9 +125,26 @@ func main() {
 				return err
 			}
 
+			certAttestationData, err := getCertAttestation(log, dummyDcapAddr, hex.EncodeToString(sha256.New().Sum(caCertData)))
+			if err != nil {
+				log.Error("could not get attestation for cert", "err", err)
+				return err
+			}
+
+			caCertResponseData := struct {
+				Cert  []byte `json:"cert"`
+				Quote []byte `json:"quote"`
+			}{caCertData, certAttestationData}
+
+			caCertJsonBody, err := json.Marshal(caCertResponseData)
+			if err != nil {
+				log.Error("could marshal cert response data", "err", err)
+				return err
+			}
+
 			apiSrv := &http.Server{
 				Addr:              apiListenAddr,
-				Handler:           &DummyHandler{log: log, certData: caCertData},
+				Handler:           &DummyHandler{log: log, certData: caCertJsonBody},
 				ReadHeaderTimeout: 200 * time.Millisecond,
 			}
 
@@ -181,4 +209,26 @@ func (d *DummyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		d.log.Error("could not respond with cert data", "err", err)
 	}
+}
+
+func getCertAttestation(log *slog.Logger, url string, appData string) ([]byte, error) {
+	resp, err := http.Get(url + "/attest/" + appData)
+	if err != nil {
+		log.Error("could not request the dummy quote", "err", err)
+		return nil, err
+	}
+	if resp == nil {
+		log.Error("nil response")
+		return nil, errors.New("nil response")
+	}
+
+	defer resp.Body.Close()
+
+	quote, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Error("could not get the dummy quote from response", "err", err)
+		return nil, err
+	}
+
+	return quote, nil
 }

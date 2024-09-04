@@ -1,14 +1,23 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 
+	tdx_abi "github.com/google/go-tdx-guest/abi"
+	tdx_pb "github.com/google/go-tdx-guest/proto/tdx"
+	"github.com/google/go-tdx-guest/verify"
 	"github.com/google/uuid"
 	"github.com/ruteri/tls-terminating-proxy/common"
 	"github.com/urfave/cli/v2" // imports as package "cli"
@@ -81,16 +90,39 @@ func main() {
 			}
 			defer resp.Body.Close()
 
-			certData, err := io.ReadAll(resp.Body)
+			certAndQuoteData, err := io.ReadAll(resp.Body)
 			if err != nil {
 				log.Error("could not read cert data", "err", err)
 				return err
 			}
 
+			var caCertResponseData struct {
+				Cert  []byte `json:"cert"`
+				Quote []byte `json:"quote"`
+			}
+
+			if err := json.Unmarshal(certAndQuoteData, &caCertResponseData); err != nil {
+				log.Error("could not unmarshal cert data", "err", err)
+				return err
+			}
+
+			v4Quote, err := verifyQuote(log, caCertResponseData.Quote)
+			if err != nil {
+				log.Error("could not validate cert quote", "err", err)
+				return err
+			}
+
+			// TODO: validate quote matches the expected measurement!
+			caCertAppData := sha256.New().Sum(caCertResponseData.Cert)
+			if !bytes.Equal(v4Quote.Header.UserData, caCertAppData) {
+				log.Error("unexpected user data in quote", "expected", hex.EncodeToString(caCertAppData), "actual", hex.EncodeToString(v4Quote.Header.UserData))
+				return errors.New("user data mismatch")
+			}
+
 			roots := x509.NewCertPool()
-			ok := roots.AppendCertsFromPEM(certData)
+			ok := roots.AppendCertsFromPEM(caCertResponseData.Cert)
 			if !ok {
-				log.Error("invalid certificate received", "cert", string(certData))
+				log.Error("invalid certificate received", "cert", string(caCertResponseData.Cert))
 				return errors.New("invalid certificate")
 			}
 
@@ -136,4 +168,35 @@ func main() {
 	if err := app.Run(os.Args); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func verifyQuote(log *slog.Logger, rawQuote []byte) (*tdx_pb.QuoteV4, error) {
+	protoQuote, err := tdx_abi.QuoteToProto(rawQuote[:])
+	if err != nil {
+		log.Error("invalid quote format", "quote", rawQuote)
+		return nil, err
+	}
+
+	v4Quote, err := func() (*tdx_pb.QuoteV4, error) {
+		switch q := protoQuote.(type) {
+		case *tdx_pb.QuoteV4:
+			return q, nil
+		default:
+			return nil, fmt.Errorf("unsupported quote type: %T", q)
+		}
+	}()
+	if err != nil {
+		return nil, err
+	}
+
+	log.Info("quote", "quote", v4Quote)
+
+	options := verify.DefaultOptions()
+	// TODO: fetch collateral before verifying to distinguish the error better
+	err = verify.TdxQuote(protoQuote, options)
+	if err != nil {
+		return nil, err
+	}
+
+	return v4Quote, nil
 }
